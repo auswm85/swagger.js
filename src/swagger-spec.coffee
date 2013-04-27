@@ -94,6 +94,25 @@ describe 'SwaggerApi', ->
         runs ->
           expect(wordnik.pet).toBeDefined()
 
+  describe 'api key passed in header', ->
+
+    beforeEach ->
+      window.wordnik = new SwaggerApi
+        discoveryUrl: 'http://petstore.swagger.wordnik.com/api/api-docs.json'
+        apiKey: window.api_key
+        apiKeyName: 'api_key'
+        headers: {'api_key': window.api_key}
+
+      wordnik.build()
+      waitsFor ->
+        wordnik.ready?
+
+    it "checks that headers are there", ->
+      runs ->
+        expect(wordnik.headers).toBeDefined()
+        expect(wordnik.headers.api_key).toBeDefined()
+        expect(wordnik.headers.api_key).toEqual(window.api_key)
+
 describe 'SwaggerResource', ->
   
   beforeEach ->

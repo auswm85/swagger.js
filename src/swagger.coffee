@@ -29,70 +29,71 @@ class SwaggerApi
     
   build: ->
     @progress 'fetching resource list: ' + @discoveryUrl
-    jQuery.getJSON(@discoveryUrl,
-      (response) =>
 
-        @apiVersion = response.apiVersion if response.apiVersion?
+    jQuery.ajax @discoveryUrl,
+        type: 'GET'
+        dataType: 'json'
+        beforeSend: (request) =>
+          @setRequestHeaders request
+          return
+        success: (response) =>
+          @apiVersion = response.apiVersion if response.apiVersion?
 
-        # If there is a basePath in response, use that or else derive from discoveryUrl
-        if response.basePath? and jQuery.trim(response.basePath).length > 0
-          @basePath = response.basePath
-          @fail "discoveryUrl basePath must be a URL." unless @basePath.match(/^HTTP/i)?
-          # TODO: Take this out. It's an API regression.
-          @basePath = @basePath.replace(/\/$/, '')
-        else
-          # The base path derived from discoveryUrl
-          @basePath = @discoveryUrl.substring(0, @discoveryUrl.lastIndexOf('/'))
-          log 'derived basepath from discoveryUrl as ' + @basePath
+          # If there is a basePath in response, use that or else derive from discoveryUrl
+          if response.basePath? and jQuery.trim(response.basePath).length > 0
+            @basePath = response.basePath
+            @fail "discoveryUrl basePath must be a URL." unless @basePath.match(/^HTTP/i)?
+            # TODO: Take this out. It's an API regression.
+            @basePath = @basePath.replace(/\/$/, '')
+          else
+            # The base path derived from discoveryUrl
+            @basePath = @discoveryUrl.substring(0, @discoveryUrl.lastIndexOf('/'))
+            log 'derived basepath from discoveryUrl as ' + @basePath
 
-        @apis = {}
-        @apisArray = []
+          @apis = {}
+          @apisArray = []
 
-        # If this response contains resourcePath, all the apis in response belong to one single path
-        if response.resourcePath?
-          # set the resourcePath
-          @resourcePath = response.resourcePath
+          # If this response contains resourcePath, all the apis in response belong to one single path
+          if response.resourcePath?
+            # set the resourcePath
+            @resourcePath = response.resourcePath
 
-          # create only one resource and add operations to the same one for the rest of them
-          res = null
-          for resource in response.apis
-            if res is null
+            # create only one resource and add operations to the same one for the rest of them
+            res = null
+            for resource in response.apis
+              if res is null
+                res = new SwaggerResource resource, this
+              else
+                res.addOperations(resource.path, resource.operations)
+
+            # if there are some apis
+            if res?
+              @apis[res.name] = res
+              @apisArray.push res
+              # Mark as ready
+              res.ready = true
+
+              # Now that this resource is loaded, tell the API to check in on itself
+              @selfReflect()
+          else
+            # Store a Array of apis and a map of apis by name
+            for resource in response.apis
               res = new SwaggerResource resource, this
-            else
-              res.addOperations(resource.path, resource.operations)
+              @apis[res.name] = res
+              @apisArray.push res
 
-          # if there are some apis
-          if res?
-            @apis[res.name] = res
-            @apisArray.push res
-            # Mark as ready
-            res.ready = true
+          this
 
-            # Now that this resource is loaded, tell the API to check in on itself
-            @selfReflect()
-        else
-          # Store a Array of apis and a map of apis by name
-          for resource in response.apis
-            res = new SwaggerResource resource, this
-            @apis[res.name] = res
-            @apisArray.push res
+        error: (error) =>
+          if @discoveryUrl.substring(0, 4) isnt 'http'
+            @fail 'Please specify the protocol for ' + @discoveryUrl
+          else if error.status == 0
+            @fail 'Can\'t read from server.  It may not have the appropriate access-control-origin settings.'
+          else if error.status == 404
+            @fail 'Can\'t read swagger JSON from '  + @discoveryUrl
+          else
+            @fail error.status + ' : ' + error.statusText + ' ' + @discoveryUrl
 
-        this
-
-    ).error(
-      (error) =>
-        if @discoveryUrl.substring(0, 4) isnt 'http'
-          @fail 'Please specify the protocol for ' + @discoveryUrl
-        else if error.status == 0
-          @fail 'Can\'t read from server.  It may not have the appropriate access-control-origin settings.'
-        else if error.status == 404
-          @fail 'Can\'t read swagger JSON from '  + @discoveryUrl
-        else
-          @fail error.status + ' : ' + error.statusText + ' ' + @discoveryUrl
-    )
-
-  # This method is called each time a child resource finishes loading
-  # 
   selfReflect: ->
     return false unless @apis?
     for resource_name, resource of @apis
@@ -121,11 +122,18 @@ class SwaggerApi
   # Suffix a passed url with api_key
   #
   suffixApiKey: (url) ->
-    if @api_key? and jQuery.trim(@api_key).length > 0 and url?
+    if @api_key? and jQuery.trim(@api_key).length > 0 and url? and (not @supportHeaderParams? or @supportHeaderParams is false)
       sep = if url.indexOf('?') > 0 then '&' else '?'
       url + sep + @apiKeyName + '=' + @api_key
     else
       url
+
+  setRequestHeaders: (request) ->
+    if @headers?
+      for k,v of @headers
+        request.setRequestHeader k, v
+
+    return
 
   help: ->
     for resource_name, resource of @apis
@@ -167,7 +175,6 @@ class SwaggerResource
 
       @addOperations(resourceObj.path, resourceObj.operations)
 
-
       # Store a named reference to this resource on the parent object
       @api[this.name] = this
 
@@ -179,9 +186,16 @@ class SwaggerResource
       @url = @api.suffixApiKey(@api.basePath + @path.replace('{format}', 'json'))
 
       @api.progress 'fetching resource ' + @name + ': ' + @url
-      jQuery.getJSON(@url
-        (response) =>
 
+      jQuery.ajax @url, 
+        type: 'GET'
+        dataType: 'json'
+        beforeSend: (request) =>
+          @api.setRequestHeaders request
+          
+          return
+
+        success: (response) =>
           # If there is a basePath in response, use that or else use
           # the one from the api object
           if response.basePath? and jQuery.trim(response.basePath).length > 0
@@ -204,10 +218,8 @@ class SwaggerResource
 
           # Now that this resource is loaded, tell the API to check in on itself
           @api.selfReflect()
-        ).error(
-        (error) =>
+        error: (error) =>
           @api.fail "Unable to read api '" + @name + "' from path " + @url + " (server returned " + error.statusText + ")"
-        )
 
   addModels: (models) ->
     if models?
