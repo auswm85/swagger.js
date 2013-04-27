@@ -122,17 +122,17 @@ class SwaggerApi
   # Suffix a passed url with api_key
   #
   suffixApiKey: (url) ->
-    if @api_key? and jQuery.trim(@api_key).length > 0 and url? and (not @supportHeaderParams? or @supportHeaderParams is false)
+    if @api_key? and jQuery.trim(@api_key).length > 0 and url? and (@supportHeaderParams? or @supportHeaderParams is false)
       sep = if url.indexOf('?') > 0 then '&' else '?'
       url + sep + @apiKeyName + '=' + @api_key
     else
       url
 
+  # append any available request headers
   setRequestHeaders: (request) ->
     if @headers?
       for k,v of @headers
         request.setRequestHeader k, v
-
     return
 
   help: ->
@@ -192,7 +192,7 @@ class SwaggerResource
         dataType: 'json'
         beforeSend: (request) =>
           @api.setRequestHeaders request
-          
+
           return
 
         success: (response) =>
