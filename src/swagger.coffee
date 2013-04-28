@@ -19,7 +19,7 @@ class SwaggerApi
     @failure = if options.failure? then options.failure else ->
     @progress = if options.progress? then options.progress else ->
     @headers = if options.headers? then options.headers else {}
-    @booleanValues = if options.booleanValues? then options.booleanValues else new Array('true', 'false')
+    @booleanValues = if options.booleanValues? then options.booleanValues else ['true', 'false']
 
     # Suffix discovery url with api_key
     @discoveryUrl = @suffixApiKey(@discoveryUrl)
@@ -192,7 +192,6 @@ class SwaggerResource
         dataType: 'json'
         beforeSend: (request) =>
           @api.setRequestHeaders request
-
           return
 
         success: (response) =>
